@@ -1,6 +1,5 @@
 package com.interpreter;
 
-//handles program entry point: reads source from stdin, runs the pipeline, prints globals
 import com.interpreter.error.InterpreterException;
 import com.interpreter.lexer.Lexer;
 import com.interpreter.lexer.Token;
@@ -17,11 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Entry point.
- * Errors (lex / parse / runtime) are written to standard error and the
- * process exits with status 1.
- */
 public final class Main {
 
     public static void main(String[] args) {
@@ -30,10 +24,6 @@ public final class Main {
         if (status != 0) System.exit(status);
     }
 
-    /**
-     * Pure entry point used by tests. Returns the process exit code so callers
-     * can assert on success/failure without intercepting {@link System#exit}.
-     */
     public int run(String source, java.io.PrintStream out, java.io.PrintStream err) {
         try {
             List<Token> tokens = new Lexer(source).tokenize();

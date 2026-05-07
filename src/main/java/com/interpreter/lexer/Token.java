@@ -1,6 +1,6 @@
 package com.interpreter.lexer;
 
-//representa a single lexical token (type, lexeme, literal, position)
+//one lexical token
 public record Token(TokenType type, String lexeme, Object literal, int line, int column) {
 
     @Override

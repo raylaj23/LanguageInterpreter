@@ -1,28 +1,28 @@
 package com.interpreter.lexer;
 
-//enumeration of all token kinds the lexer can produce
+//all token types the lexer can produce
 public enum TokenType {
-    // Literals
+    // literals
     NUMBER, IDENT,
 
-    // Keywords
+    // keywords
     IF, THEN, ELSE, WHILE, DO, FUN, RETURN, TRUE, FALSE,
 
-    // Operators
+    // operators
     PLUS, MINUS, STAR, SLASH, PERCENT, STARSTAR,
     EQ, NEQ, LT, GT, LE, GE,
-    //handles logical operator tokens
+    // logical operator
     AND, OR, BANG,
     ASSIGN,
-    //handles compound assignment tokens
+    // compound assignment
     PLUS_ASSIGN, MINUS_ASSIGN, STAR_ASSIGN, SLASH_ASSIGN, PERCENT_ASSIGN, STARSTAR_ASSIGN,
-    //handles increment and decrement tokens
+    // increment and decrement
     PLUSPLUS, MINUSMINUS,
 
-    // Punctuation
+    // punctuation
     LPAREN, RPAREN, LBRACE, RBRACE, COMMA,
 
-    // Statement separator (significant in the grammar)
+    // statement separator
     NEWLINE,
 
     EOF

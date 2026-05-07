@@ -1,6 +1,5 @@
 package com.interpreter.runtime;
 
-//handles tree-walking execution of the AST and tracks global variables
 import com.interpreter.error.RuntimeError;
 import com.interpreter.parser.Expr;
 import com.interpreter.parser.Stmt;
@@ -9,25 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Tree-walking interpreter. Executes a parsed program against an in-memory
- * environment and returns the final globals.
- *
- * <h2>Semantics in brief</h2>
- * <ul>
- *   <li>Two value types: 64-bit signed integers and booleans.</li>
- *   <li>Conditions ({@code if}, {@code while}) require a boolean -- there is no
- *       implicit truthiness, which makes type errors loud and obvious.</li>
- *   <li>Functions live in their own namespace and may only be defined at the
- *       top level. They see globals (so recursion works) but assignments
- *       inside a body create locals.</li>
- *   <li>{@code return} unwinds the call via {@link ReturnSignal}, an internal
- *       exception. Cheaper than threading a "did we return?" flag through
- *       every recursive call.</li>
- *   <li>Recursion is capped at {@link #MAX_CALL_DEPTH} so an infinite recursion
- *       surfaces as a clean runtime error rather than a {@link StackOverflowError}.</li>
- * </ul>
- */
+// tree-walking interpreter - executes the AST and tracks globals
 public final class Interpreter {
 
     private static final int MAX_CALL_DEPTH = 1000;
@@ -36,7 +17,7 @@ public final class Interpreter {
     private final Map<String, Stmt.FunDef> functions = new HashMap<>();
     private int callDepth = 0;
 
-    /** Runs the program and returns the final values of all top-level (global) variables. */
+    // run the program and return the final globals
     public Map<String, Value> run(List<Stmt> program) {
         for (Stmt s : program) {
             execute(s, globals);
@@ -44,8 +25,7 @@ public final class Interpreter {
         return globals.values();
     }
 
-    // === Statement execution ===
-
+    // statement execution
     private void execute(Stmt stmt, Environment env) {
         switch (stmt) {
             case Stmt.Assign a -> env.define(a.name(), evaluate(a.value(), env));
@@ -67,6 +47,7 @@ public final class Interpreter {
             }
 
             case Stmt.FunDef f -> {
+                // top-level only, no redefinition
                 if (env != globals) {
                     throw new RuntimeError("Functions can only be defined at the top level", f.line());
                 }
@@ -84,8 +65,7 @@ public final class Interpreter {
         }
     }
 
-    // === Expression evaluation ===
-
+    // expression evaluation
     private Value evaluate(Expr expr, Environment env) {
         return switch (expr) {
             case Expr.NumberLit n -> new Value.IntVal(n.value());
@@ -103,7 +83,7 @@ public final class Interpreter {
             case Expr.Unary u -> {
                 Value operand = evaluate(u.operand(), env);
                 if (u.op().equals("-")) {
-                    //handles unary minus on int (overflow-checked) or float (IEEE negate)
+                    // unary minus - float is plain negate, int is overflow-checked
                     if (operand instanceof Value.FloatVal fv) yield new Value.FloatVal(-fv.value());
                     long n = asInt(operand, u.line());
                     try {
@@ -120,7 +100,7 @@ public final class Interpreter {
 
             case Expr.Binary b -> evalBinary(b, env);
 
-            //handles short-circuit evaluation for && and ||
+            // && and || - short-circuiting
             case Expr.Logical lg -> {
                 boolean lb = asBool(evaluate(lg.left(), env), lg.line());
                 if (lg.op().equals("&&")) {
@@ -138,7 +118,7 @@ public final class Interpreter {
     private Value evalBinary(Expr.Binary b, Environment env) {
         Value l = evaluate(b.left(), env);
         Value r = evaluate(b.right(), env);
-        //handles numeric type promotion: if either operand is a float, do float math; else int math
+        // numeric promotion - any float operand bumps the whole op to float
         boolean fp = (l instanceof Value.FloatVal) || (r instanceof Value.FloatVal);
         return switch (b.op()) {
             case "+", "-", "*" -> fp ? floatArith(l, r, b.op(), b.line()) : intArith(l, r, b.op(), b.line());
@@ -163,7 +143,7 @@ public final class Interpreter {
                 if (ri == 0) throw new RuntimeError("Modulo by zero", b.line());
                 yield new Value.IntVal(li % ri);
             }
-            //handles exponentiation: float promotion uses Math.pow; pure int uses overflow-checked squaring
+            // ** - float uses Math.pow, int uses overflow-checked squaring
             case "**" -> {
                 if (fp) yield new Value.FloatVal(Math.pow(asDouble(l, b.line()), asDouble(r, b.line())));
                 long base = asInt(l, b.line());
@@ -193,7 +173,7 @@ public final class Interpreter {
         };
     }
 
-    //handles overflow-checked integer + - *
+    // overflow-checked int + - *
     private Value intArith(Value l, Value r, String op, int line) {
         long li = asInt(l, line);
         long ri = asInt(r, line);
@@ -209,7 +189,7 @@ public final class Interpreter {
         }
     }
 
-    //handles IEEE-754 float + - *
+    // float + - *
     private Value floatArith(Value l, Value r, String op, int line) {
         double li = asDouble(l, line);
         double ri = asDouble(r, line);
@@ -221,7 +201,7 @@ public final class Interpreter {
         });
     }
 
-    //handles numeric ordering across mixed int/float operands
+    // numeric ordering across mixed int/float operands
     private int numCmp(Value l, Value r, int line) {
         if (l instanceof Value.FloatVal || r instanceof Value.FloatVal) {
             return Double.compare(asDouble(l, line), asDouble(r, line));
@@ -241,12 +221,13 @@ public final class Interpreter {
                 c.line());
         }
 
-        // Evaluate arguments in the caller's environment.
+        // evaluate args in the caller's env
         Value[] argValues = new Value[c.args().size()];
         for (int i = 0; i < argValues.length; i++) {
             argValues[i] = evaluate(c.args().get(i), env);
         }
 
+        // recursion guard
         if (++callDepth > MAX_CALL_DEPTH) {
             callDepth--;
             throw new RuntimeError(
@@ -254,8 +235,7 @@ public final class Interpreter {
                 c.line());
         }
         try {
-            // Function body sees globals (so it can call other functions),
-            // but local assignments stay in the local frame.
+            // body sees globals (so it can call other funcs), locals stay in the local frame
             Environment local = new Environment(globals);
             for (int i = 0; i < def.params().size(); i++) {
                 local.define(def.params().get(i), argValues[i]);
@@ -275,14 +255,14 @@ public final class Interpreter {
         }
     }
 
-    // === Coercion helpers ===
+    // coercion helpers
 
     private long asInt(Value v, int line) {
         if (v instanceof Value.IntVal i) return i.value();
         throw new RuntimeError("Expected int, got " + v.typeName(), line);
     }
 
-    //handles numeric coercion: accepts int or float, returns its value as a double
+    // accept int or float, return as double
     private double asDouble(Value v, int line) {
         if (v instanceof Value.FloatVal f) return f.value();
         if (v instanceof Value.IntVal i)   return (double) i.value();
@@ -301,7 +281,7 @@ public final class Interpreter {
         if (a instanceof Value.BoolVal ab && b instanceof Value.BoolVal bb) {
             return ab.value() == bb.value();
         }
-        //handles cross-type numeric equality (int vs float) by comparing as doubles
+        // cross-type int/float equality - compare as doubles
         if ((a instanceof Value.IntVal || a instanceof Value.FloatVal)
                 && (b instanceof Value.IntVal || b instanceof Value.FloatVal)) {
             return asDouble(a, line) == asDouble(b, line);
@@ -311,11 +291,8 @@ public final class Interpreter {
             line);
     }
 
-    /**
-     * Internal control-flow exception used to unwind a function call on
-     * {@code return}. Stack trace and suppression are disabled because we
-     * never want this to surface to the user.
-     */
+    // internal control-flow exception used to unwind a function call on `return`
+    // stack trace and suppression are disabled - never surfaced to the user
     private static final class ReturnSignal extends RuntimeException {
         final Value value;
         ReturnSignal(Value value) {

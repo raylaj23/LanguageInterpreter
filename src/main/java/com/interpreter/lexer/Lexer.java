@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-//converta source text into a token stream
+//convert source text into a token stream
 public final class Lexer {
 
     private static final Map<String, TokenType> KEYWORDS = Map.ofEntries(
@@ -47,21 +47,29 @@ public final class Lexer {
     private void scanToken() {
         char c = advance();
         switch (c) {
-            case ' ', '\t', '\r' -> { /* skip insignificant whitespace */ }
+            case ' ', '\t', '\r' -> {
+                // skip useless whitespace
+            }
             case '\n' -> {
                 addToken(TokenType.NEWLINE);
                 line++;
                 column = 1;
             }
             case '+' -> {
-                if (match('+'))      addToken(TokenType.PLUSPLUS);
-                else if (match('=')) addToken(TokenType.PLUS_ASSIGN);
-                else                 addToken(TokenType.PLUS);
+                if (match('+'))
+                    addToken(TokenType.PLUSPLUS);
+                else if (match('='))
+                    addToken(TokenType.PLUS_ASSIGN);
+                else
+                    addToken(TokenType.PLUS);
             }
             case '-' -> {
-                if (match('-'))      addToken(TokenType.MINUSMINUS);
-                else if (match('=')) addToken(TokenType.MINUS_ASSIGN);
-                else                 addToken(TokenType.MINUS);
+                if (match('-'))
+                    addToken(TokenType.MINUSMINUS);
+                else if (match('='))
+                    addToken(TokenType.MINUS_ASSIGN);
+                else
+                    addToken(TokenType.MINUS);
             }
             case '*' -> {
                 if (match('*')) {
@@ -82,12 +90,16 @@ public final class Lexer {
             case '=' -> addToken(match('=') ? TokenType.EQ : TokenType.ASSIGN);
             case '!' -> addToken(match('=') ? TokenType.NEQ : TokenType.BANG);
             case '&' -> {
-                if (match('&')) addToken(TokenType.AND);
-                else throw new LexError("Unexpected character '&' (did you mean '&&' ?)", line);
+                if (match('&'))
+                    addToken(TokenType.AND);
+                else
+                    throw new LexError("Unexpected character '&' (did you mean '&&' ?)", line);
             }
             case '|' -> {
-                if (match('|')) addToken(TokenType.OR);
-                else throw new LexError("Unexpected character '|' (did you mean '||' ?)", line);
+                if (match('|'))
+                    addToken(TokenType.OR);
+                else
+                    throw new LexError("Unexpected character '|' (did you mean '||' ?)", line);
             }
             case '<' -> addToken(match('=') ? TokenType.LE : TokenType.LT);
             case '>' -> addToken(match('=') ? TokenType.GE : TokenType.GT);
@@ -110,7 +122,8 @@ public final class Lexer {
 
     private void number() {
         while (!isAtEnd() && Character.isDigit(peek())) advance();
-        //handles optional fractional part — a '.' is only consumed when followed by a digit
+        // fractional part
+        // '.' is only consumed when followed by a digit
         boolean isFloat = false;
         if (peek() == '.' && current + 1 < source.length()
                 && Character.isDigit(source.charAt(current + 1))) {
@@ -118,6 +131,7 @@ public final class Lexer {
             advance(); // consume '.'
             while (!isAtEnd() && Character.isDigit(peek())) advance();
         }
+
         String text = source.substring(start, current);
         Object literal;
         try {
@@ -125,11 +139,13 @@ public final class Lexer {
         } catch (NumberFormatException e) {
             throw new LexError("Number literal out of range: " + text, line);
         }
+
         tokens.add(new Token(TokenType.NUMBER, text, literal, line, tokenColumn));
     }
 
     private void identifier() {
         while (!isAtEnd() && isIdentPart(peek())) advance();
+
         String text = source.substring(start, current);
         TokenType type = KEYWORDS.getOrDefault(text, TokenType.IDENT);
         Object literal = switch (type) {
@@ -137,6 +153,7 @@ public final class Lexer {
             case FALSE -> Boolean.FALSE;
             default    -> null;
         };
+
         tokens.add(new Token(type, text, literal, line, tokenColumn));
     }
 
@@ -149,7 +166,8 @@ public final class Lexer {
     }
 
     private boolean match(char expected) {
-        if (isAtEnd() || source.charAt(current) != expected) return false;
+        if (isAtEnd() || source.charAt(current) != expected)
+            return false;
         current++;
         column++;
         return true;

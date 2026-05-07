@@ -1,15 +1,8 @@
 package com.interpreter.parser;
 
-//handles the AST node hierarchy for expressions
 import java.util.List;
 
-/**
- * AST node for expressions. Sealed so the interpreter can exhaustively switch
- * over the variants without a default case.
- *
- * <p>Each node carries the source line on which it begins, which the runtime
- * uses when reporting errors.
- */
+// handles the AST node hierarchy for expressions
 public sealed interface Expr {
     int line();
 

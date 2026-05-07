@@ -1,6 +1,6 @@
 package com.interpreter;
 
-//handles end-to-end tests running source through the full lex/parse/interpret pipeline
+// end-to-end tests - run source through the full lex/parse/interpret pipeline
 import com.interpreter.lexer.Lexer;
 import com.interpreter.lexer.Token;
 import com.interpreter.parser.Parser;
@@ -15,18 +15,17 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * End-to-end tests covering the six sample programs from the spec, plus
- * a handful of error and edge cases.
- */
+// covers the six sample programs from the spec plus error and edge cases
 final class EndToEndTest {
 
+    // run source through lexer -> parser -> interpreter, return final globals
     private static Map<String, Value> run(String source) {
         List<Token> tokens = new Lexer(source).tokenize();
         List<Stmt> program = new Parser(tokens).parseProgram();
         return new Interpreter().run(program);
     }
 
+    // run and format globals as "name: value\n" lines
     private static String formatted(String source) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, Value> e : run(source).entrySet()) {
@@ -57,7 +56,7 @@ final class EndToEndTest {
                 """));
     }
 
-    @Test @DisplayName("sample 3: while loop with comma-compound body")
+    @Test @DisplayName("sample 3: while with comma body")
     void sampleWhileLoop() {
         assertEquals(
             "x: 3\ny: 11\n",
@@ -92,7 +91,7 @@ final class EndToEndTest {
             """));
     }
 
-    // Output formatting
+    // output formatting
 
     @Test @DisplayName("globals print in declaration order, function names omitted")
     void declarationOrderAndFunctionsHidden() {
@@ -102,7 +101,6 @@ final class EndToEndTest {
             a = 2
             m = id(7)
             """);
-        // declaration order: z, a, m -- and `id` (the function) does not appear.
         assertEquals("z: 1\na: 2\nm: 7\n", out);
     }
 
@@ -115,7 +113,7 @@ final class EndToEndTest {
         assertEquals("r: 11\n", out);
     }
 
-    // Error handling
+    // error handling
 
     @Test @DisplayName("undefined variable -> runtime error mentioning the name")
     void undefinedVariable() {
@@ -179,7 +177,7 @@ final class EndToEndTest {
         assertTrue(ex.getMessage().contains("@"), ex.getMessage());
     }
 
-    // Misc
+    // misc
 
     @Test @DisplayName("blank input runs and produces no output")
     void blankInput() {

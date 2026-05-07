@@ -1,17 +1,8 @@
 package com.interpreter.parser;
 
-//handles the AST node hierarchy for statements
 import java.util.List;
 
-/**
- * AST node for statements. Sealed for exhaustive pattern-matching in the
- * interpreter.
- *
- * <p>Note that the bodies of {@code while} loops and function definitions are
- * lists of statements (a "compound"), while the branches of an {@code if} are
- * single statements -- this matches the comma-vs-newline rules described in
- * the README's grammar section.
- */
+// AST node hierarchy for statements
 public sealed interface Stmt {
     int line();
 
