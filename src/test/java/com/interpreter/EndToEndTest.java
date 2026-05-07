@@ -1,5 +1,6 @@
 package com.interpreter;
 
+//handles end-to-end tests running source through the full lex/parse/interpret pipeline
 import com.interpreter.lexer.Lexer;
 import com.interpreter.lexer.Token;
 import com.interpreter.parser.Parser;

@@ -1,5 +1,6 @@
 package com.interpreter.runtime;
 
+//handles tree-walking execution of the AST and tracks global variables
 import com.interpreter.error.RuntimeError;
 import com.interpreter.parser.Expr;
 import com.interpreter.parser.Stmt;
@@ -134,6 +135,32 @@ public final class Interpreter {
                     throw new RuntimeError("Arithmetic overflow on '/'", b.line());
                 }
                 yield new Value.IntVal(li / ri);
+            }
+            //handles modulo with division-by-zero guard; Java's % is safe for Long.MIN_VALUE % -1 (returns 0)
+            case "%"  -> {
+                long li = asInt(l, b.line());
+                long ri = asInt(r, b.line());
+                if (ri == 0) throw new RuntimeError("Modulo by zero", b.line());
+                yield new Value.IntVal(li % ri);
+            }
+            //handles integer exponentiation with overflow checking and rejection of negative exponents
+            case "**" -> {
+                long base = asInt(l, b.line());
+                long exp  = asInt(r, b.line());
+                if (exp < 0) {
+                    throw new RuntimeError("Negative exponent not supported for integer '**'", b.line());
+                }
+                long result = 1;
+                try {
+                    while (exp > 0) {
+                        if ((exp & 1) == 1) result = Math.multiplyExact(result, base);
+                        exp >>= 1;
+                        if (exp > 0) base = Math.multiplyExact(base, base);
+                    }
+                } catch (ArithmeticException e) {
+                    throw new RuntimeError("Arithmetic overflow on '**'", b.line());
+                }
+                yield new Value.IntVal(result);
             }
             case "==" -> new Value.BoolVal(equals(l, r, b.line()));
             case "!=" -> new Value.BoolVal(!equals(l, r, b.line()));

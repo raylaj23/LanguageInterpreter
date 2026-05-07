@@ -1,5 +1,6 @@
 package com.interpreter.parser;
 
+//handles recursive-descent parsing of tokens into an AST of statements
 import com.interpreter.error.ParseError;
 import com.interpreter.lexer.Token;
 import com.interpreter.lexer.TokenType;
@@ -15,7 +16,7 @@ import java.util.List;
  * <pre>
  *   program     := stmt (NEWLINE+ stmt)*
  *   stmt        := assignment | if | while | fun | return | expr
- *   assignment  := IDENT '=' expr
+ *   assignment  := IDENT ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '**=') expr
  *   if          := 'if' expr 'then' stmt ('else' stmt)?
  *   while       := 'while' expr 'do' whileBody
  *   whileBody   := stmt (',' stmt)*                          ; terminated by NEWLINE / RBRACE / EOF
@@ -26,8 +27,9 @@ import java.util.List;
  *   expr        := comparison
  *   comparison  := addition (('==' | '!=' | '<' | '>' | '<=' | '>=') addition)*
  *   addition    := multiplication (('+' | '-') multiplication)*
- *   multiplication := unary (('*' | '/') unary)*
- *   unary       := '-' unary | primary
+ *   multiplication := unary (('*' | '/' | '%') unary)*
+ *   unary       := '-' unary | power
+ *   power       := primary ('**' unary)?
  *   primary     := NUMBER | 'true' | 'false' | IDENT | call | '(' expr ')'
  *   call        := IDENT '(' (expr (',' expr)*)? ')'
  * </pre>
@@ -126,10 +128,28 @@ public final class Parser {
     }
 
     private Stmt parseAssignOrExpr() {
-        if (check(TokenType.IDENT) && checkNext(TokenType.ASSIGN)) {
+        if (check(TokenType.IDENT) && checkNextAny(
+                TokenType.ASSIGN,
+                TokenType.PLUS_ASSIGN, TokenType.MINUS_ASSIGN,
+                TokenType.STAR_ASSIGN, TokenType.SLASH_ASSIGN,
+                TokenType.PERCENT_ASSIGN, TokenType.STARSTAR_ASSIGN)) {
             Token name = consume(TokenType.IDENT, "Expected identifier");
-            consume(TokenType.ASSIGN, "Expected '='");
+            Token op = advance();
             Expr value = parseExpr();
+            //handles compound assignment by desugaring x op= e into x = x op e
+            if (op.type() != TokenType.ASSIGN) {
+                String binOp = switch (op.type()) {
+                    case PLUS_ASSIGN     -> "+";
+                    case MINUS_ASSIGN    -> "-";
+                    case STAR_ASSIGN     -> "*";
+                    case SLASH_ASSIGN    -> "/";
+                    case PERCENT_ASSIGN  -> "%";
+                    case STARSTAR_ASSIGN -> "**";
+                    default -> throw error("Unexpected compound operator");
+                };
+                Expr lhs = new Expr.Variable(name.lexeme(), name.line());
+                value = new Expr.Binary(lhs, binOp, value, op.line());
+            }
             return new Stmt.Assign(name.lexeme(), value, name.line());
         }
         Token tok = peek();
@@ -198,7 +218,7 @@ public final class Parser {
 
     private Expr parseMultiplication() {
         Expr left = parseUnary();
-        while (checkAny(TokenType.STAR, TokenType.SLASH)) {
+        while (checkAny(TokenType.STAR, TokenType.SLASH, TokenType.PERCENT)) {
             Token op = advance();
             Expr right = parseUnary();
             left = new Expr.Binary(left, op.lexeme(), right, op.line());
@@ -212,7 +232,18 @@ public final class Parser {
             Expr operand = parseUnary();
             return new Expr.Unary(op.lexeme(), operand, op.line());
         }
-        return parsePrimary();
+        return parsePower();
+    }
+
+    //handles right-associative '**' with higher precedence than unary minus on the right operand
+    private Expr parsePower() {
+        Expr base = parsePrimary();
+        if (check(TokenType.STARSTAR)) {
+            Token op = advance();
+            Expr exp = parseUnary();
+            return new Expr.Binary(base, op.lexeme(), exp, op.line());
+        }
+        return base;
     }
 
     private Expr parsePrimary() {
@@ -254,6 +285,13 @@ public final class Parser {
     private boolean checkNext(TokenType type) {
         if (current + 1 >= tokens.size()) return false;
         return tokens.get(current + 1).type() == type;
+    }
+
+    private boolean checkNextAny(TokenType... types) {
+        if (current + 1 >= tokens.size()) return false;
+        TokenType t = tokens.get(current + 1).type();
+        for (TokenType type : types) if (t == type) return true;
+        return false;
     }
 
     private boolean checkAny(TokenType... types) {

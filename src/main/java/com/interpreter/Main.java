@@ -1,5 +1,6 @@
 package com.interpreter;
 
+//handles program entry point: reads source from stdin, runs the pipeline, prints globals
 import com.interpreter.error.InterpreterException;
 import com.interpreter.lexer.Lexer;
 import com.interpreter.lexer.Token;
@@ -17,11 +18,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Entry point. Reads a program from standard input, runs it, and prints the
- * final values of its global variables to standard output -- one per line, in
- * declaration order, formatted as {@code name: value}.
- *
- * <p>Errors (lex / parse / runtime) are written to standard error and the
+ * Entry point.
+ * Errors (lex / parse / runtime) are written to standard error and the
  * process exits with status 1.
  */
 public final class Main {

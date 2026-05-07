@@ -6,14 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Converts a raw source string into a stream of {@link Token}s.
- *
- * <p>The lexer recognises numbers, identifiers, the language's keywords, single-
- * and two-character operators, and treats line breaks as a significant
- * {@link TokenType#NEWLINE} token (the parser uses NEWLINE as a top-level
- * statement separator).
- */
+//converta source text into a token stream
 public final class Lexer {
 
     private static final Map<String, TokenType> KEYWORDS = Map.ofEntries(
@@ -34,8 +27,8 @@ public final class Lexer {
     private int start = 0;        // start offset of the current token
     private int current = 0;      // current scan offset
     private int line = 1;
-    private int column = 1;       // column of `current`
-    private int tokenColumn = 1;  // column of `start`
+    private int column = 1;       // column of current
+    private int tokenColumn = 1;  // column of start
 
     public Lexer(String source) {
         this.source = source;
@@ -60,10 +53,19 @@ public final class Lexer {
                 line++;
                 column = 1;
             }
-            case '+' -> addToken(TokenType.PLUS);
-            case '-' -> addToken(TokenType.MINUS);
-            case '*' -> addToken(TokenType.STAR);
-            case '/' -> addToken(TokenType.SLASH);
+            case '+' -> addToken(match('=') ? TokenType.PLUS_ASSIGN : TokenType.PLUS);
+            case '-' -> addToken(match('=') ? TokenType.MINUS_ASSIGN : TokenType.MINUS);
+            case '*' -> {
+                if (match('*')) {
+                    addToken(match('=') ? TokenType.STARSTAR_ASSIGN : TokenType.STARSTAR);
+                } else if (match('=')) {
+                    addToken(TokenType.STAR_ASSIGN);
+                } else {
+                    addToken(TokenType.STAR);
+                }
+            }
+            case '/' -> addToken(match('=') ? TokenType.SLASH_ASSIGN : TokenType.SLASH);
+            case '%' -> addToken(match('=') ? TokenType.PERCENT_ASSIGN : TokenType.PERCENT);
             case '(' -> addToken(TokenType.LPAREN);
             case ')' -> addToken(TokenType.RPAREN);
             case '{' -> addToken(TokenType.LBRACE);

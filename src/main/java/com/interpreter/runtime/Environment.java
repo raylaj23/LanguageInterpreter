@@ -1,5 +1,6 @@
 package com.interpreter.runtime;
 
+//handles variable scopes chained from inner to outer for name lookup
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;

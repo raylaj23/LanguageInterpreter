@@ -1,5 +1,6 @@
 package com.interpreter.runtime;
 
+//handles runtime values: integers and booleans
 /**
  * Runtime value. The language has two primitive types: 64-bit signed integers
  * and booleans. Strings, arrays, and first-class functions are intentionally
