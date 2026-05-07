@@ -80,9 +80,14 @@ public final class Lexer {
             case '}' -> addToken(TokenType.RBRACE);
             case ',' -> addToken(TokenType.COMMA);
             case '=' -> addToken(match('=') ? TokenType.EQ : TokenType.ASSIGN);
-            case '!' -> {
-                if (match('=')) addToken(TokenType.NEQ);
-                else throw new LexError("Unexpected character '!' (did you mean '!=' ?)", line);
+            case '!' -> addToken(match('=') ? TokenType.NEQ : TokenType.BANG);
+            case '&' -> {
+                if (match('&')) addToken(TokenType.AND);
+                else throw new LexError("Unexpected character '&' (did you mean '&&' ?)", line);
+            }
+            case '|' -> {
+                if (match('|')) addToken(TokenType.OR);
+                else throw new LexError("Unexpected character '|' (did you mean '||' ?)", line);
             }
             case '<' -> addToken(match('=') ? TokenType.LE : TokenType.LT);
             case '>' -> addToken(match('=') ? TokenType.GE : TokenType.GT);

@@ -110,10 +110,24 @@ public final class Interpreter {
                         throw new RuntimeError("Arithmetic overflow on unary '-'", u.line());
                     }
                 }
+                if (u.op().equals("!")) {
+                    yield new Value.BoolVal(!asBool(operand, u.line()));
+                }
                 throw new RuntimeError("Unknown unary operator '" + u.op() + "'", u.line());
             }
 
             case Expr.Binary b -> evalBinary(b, env);
+
+            //handles short-circuit evaluation for && and ||
+            case Expr.Logical lg -> {
+                boolean lb = asBool(evaluate(lg.left(), env), lg.line());
+                if (lg.op().equals("&&")) {
+                    if (!lb) yield new Value.BoolVal(false);
+                } else { // "||"
+                    if (lb) yield new Value.BoolVal(true);
+                }
+                yield new Value.BoolVal(asBool(evaluate(lg.right(), env), lg.line()));
+            }
 
             case Expr.Call c -> evalCall(c, env);
         };

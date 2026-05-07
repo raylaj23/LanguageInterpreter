@@ -25,11 +25,13 @@ import java.util.List;
  *   blockBody   := stmt ((',' | NEWLINE)+ stmt)*             ; allows both separators inside { }
  *   return      := 'return' expr
  *
- *   expr        := comparison
+ *   expr        := logicOr
+ *   logicOr     := logicAnd ('||' logicAnd)*
+ *   logicAnd    := comparison ('&&' comparison)*
  *   comparison  := addition (('==' | '!=' | '<' | '>' | '<=' | '>=') addition)*
  *   addition    := multiplication (('+' | '-') multiplication)*
  *   multiplication := unary (('*' | '/' | '%') unary)*
- *   unary       := '-' unary | power
+ *   unary       := ('-' | '!') unary | power
  *   power       := primary ('**' unary)?
  *   primary     := NUMBER | 'true' | 'false' | IDENT | call | '(' expr ')'
  *   call        := IDENT '(' (expr (',' expr)*)? ')'
@@ -204,7 +206,27 @@ public final class Parser {
     // === Expressions (precedence climbing) ===
 
     private Expr parseExpr() {
-        return parseComparison();
+        return parseLogicOr();
+    }
+
+    private Expr parseLogicOr() {
+        Expr left = parseLogicAnd();
+        while (check(TokenType.OR)) {
+            Token op = advance();
+            Expr right = parseLogicAnd();
+            left = new Expr.Logical(left, op.lexeme(), right, op.line());
+        }
+        return left;
+    }
+
+    private Expr parseLogicAnd() {
+        Expr left = parseComparison();
+        while (check(TokenType.AND)) {
+            Token op = advance();
+            Expr right = parseComparison();
+            left = new Expr.Logical(left, op.lexeme(), right, op.line());
+        }
+        return left;
     }
 
     private Expr parseComparison() {
@@ -238,7 +260,7 @@ public final class Parser {
     }
 
     private Expr parseUnary() {
-        if (check(TokenType.MINUS)) {
+        if (checkAny(TokenType.MINUS, TokenType.BANG)) {
             Token op = advance();
             Expr operand = parseUnary();
             return new Expr.Unary(op.lexeme(), operand, op.line());

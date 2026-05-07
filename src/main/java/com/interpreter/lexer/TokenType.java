@@ -11,6 +11,8 @@ public enum TokenType {
     // Operators
     PLUS, MINUS, STAR, SLASH, PERCENT, STARSTAR,
     EQ, NEQ, LT, GT, LE, GE,
+    //handles logical operator tokens
+    AND, OR, BANG,
     ASSIGN,
     //handles compound assignment tokens
     PLUS_ASSIGN, MINUS_ASSIGN, STAR_ASSIGN, SLASH_ASSIGN, PERCENT_ASSIGN, STARSTAR_ASSIGN,
