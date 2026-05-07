@@ -8,7 +8,6 @@ import com.interpreter.parser.Stmt;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongBinaryOperator;
 
 /**
  * Tree-walking interpreter. Executes a parsed program against an in-memory
@@ -90,6 +89,7 @@ public final class Interpreter {
     private Value evaluate(Expr expr, Environment env) {
         return switch (expr) {
             case Expr.NumberLit n -> new Value.IntVal(n.value());
+            case Expr.FloatLit  f -> new Value.FloatVal(f.value());
             case Expr.BoolLit  b  -> new Value.BoolVal(b.value());
 
             case Expr.Variable v -> {
@@ -103,6 +103,8 @@ public final class Interpreter {
             case Expr.Unary u -> {
                 Value operand = evaluate(u.operand(), env);
                 if (u.op().equals("-")) {
+                    //handles unary minus on int (overflow-checked) or float (IEEE negate)
+                    if (operand instanceof Value.FloatVal fv) yield new Value.FloatVal(-fv.value());
                     long n = asInt(operand, u.line());
                     try {
                         yield new Value.IntVal(Math.negateExact(n));
@@ -136,29 +138,34 @@ public final class Interpreter {
     private Value evalBinary(Expr.Binary b, Environment env) {
         Value l = evaluate(b.left(), env);
         Value r = evaluate(b.right(), env);
+        //handles numeric type promotion: if either operand is a float, do float math; else int math
+        boolean fp = (l instanceof Value.FloatVal) || (r instanceof Value.FloatVal);
         return switch (b.op()) {
-            case "+"  -> intOp(l, r, b.line(), Math::addExact);
-            case "-"  -> intOp(l, r, b.line(), Math::subtractExact);
-            case "*"  -> intOp(l, r, b.line(), Math::multiplyExact);
-            case "/"  -> {
+            case "+", "-", "*" -> fp ? floatArith(l, r, b.op(), b.line()) : intArith(l, r, b.op(), b.line());
+            case "/" -> {
+                if (fp) {
+                    yield new Value.FloatVal(asDouble(l, b.line()) / asDouble(r, b.line()));
+                }
                 long li = asInt(l, b.line());
                 long ri = asInt(r, b.line());
                 if (ri == 0) throw new RuntimeError("Division by zero", b.line());
-                // Guard the one overflowing division case (Long.MIN_VALUE / -1).
                 if (li == Long.MIN_VALUE && ri == -1) {
                     throw new RuntimeError("Arithmetic overflow on '/'", b.line());
                 }
                 yield new Value.IntVal(li / ri);
             }
-            //handles modulo with division-by-zero guard; Java's % is safe for Long.MIN_VALUE % -1 (returns 0)
-            case "%"  -> {
+            case "%" -> {
+                if (fp) {
+                    yield new Value.FloatVal(asDouble(l, b.line()) % asDouble(r, b.line()));
+                }
                 long li = asInt(l, b.line());
                 long ri = asInt(r, b.line());
                 if (ri == 0) throw new RuntimeError("Modulo by zero", b.line());
                 yield new Value.IntVal(li % ri);
             }
-            //handles integer exponentiation with overflow checking and rejection of negative exponents
+            //handles exponentiation: float promotion uses Math.pow; pure int uses overflow-checked squaring
             case "**" -> {
+                if (fp) yield new Value.FloatVal(Math.pow(asDouble(l, b.line()), asDouble(r, b.line())));
                 long base = asInt(l, b.line());
                 long exp  = asInt(r, b.line());
                 if (exp < 0) {
@@ -178,12 +185,48 @@ public final class Interpreter {
             }
             case "==" -> new Value.BoolVal(equals(l, r, b.line()));
             case "!=" -> new Value.BoolVal(!equals(l, r, b.line()));
-            case "<"  -> new Value.BoolVal(asInt(l, b.line()) <  asInt(r, b.line()));
-            case ">"  -> new Value.BoolVal(asInt(l, b.line()) >  asInt(r, b.line()));
-            case "<=" -> new Value.BoolVal(asInt(l, b.line()) <= asInt(r, b.line()));
-            case ">=" -> new Value.BoolVal(asInt(l, b.line()) >= asInt(r, b.line()));
+            case "<"  -> new Value.BoolVal(numCmp(l, r, b.line()) <  0);
+            case ">"  -> new Value.BoolVal(numCmp(l, r, b.line()) >  0);
+            case "<=" -> new Value.BoolVal(numCmp(l, r, b.line()) <= 0);
+            case ">=" -> new Value.BoolVal(numCmp(l, r, b.line()) >= 0);
             default   -> throw new RuntimeError("Unknown operator '" + b.op() + "'", b.line());
         };
+    }
+
+    //handles overflow-checked integer + - *
+    private Value intArith(Value l, Value r, String op, int line) {
+        long li = asInt(l, line);
+        long ri = asInt(r, line);
+        try {
+            return new Value.IntVal(switch (op) {
+                case "+" -> Math.addExact(li, ri);
+                case "-" -> Math.subtractExact(li, ri);
+                case "*" -> Math.multiplyExact(li, ri);
+                default  -> throw new RuntimeError("Unknown operator '" + op + "'", line);
+            });
+        } catch (ArithmeticException e) {
+            throw new RuntimeError("Arithmetic overflow", line);
+        }
+    }
+
+    //handles IEEE-754 float + - *
+    private Value floatArith(Value l, Value r, String op, int line) {
+        double li = asDouble(l, line);
+        double ri = asDouble(r, line);
+        return new Value.FloatVal(switch (op) {
+            case "+" -> li + ri;
+            case "-" -> li - ri;
+            case "*" -> li * ri;
+            default  -> throw new RuntimeError("Unknown operator '" + op + "'", line);
+        });
+    }
+
+    //handles numeric ordering across mixed int/float operands
+    private int numCmp(Value l, Value r, int line) {
+        if (l instanceof Value.FloatVal || r instanceof Value.FloatVal) {
+            return Double.compare(asDouble(l, line), asDouble(r, line));
+        }
+        return Long.compare(asInt(l, line), asInt(r, line));
     }
 
     private Value evalCall(Expr.Call c, Environment env) {
@@ -236,6 +279,13 @@ public final class Interpreter {
 
     private long asInt(Value v, int line) {
         if (v instanceof Value.IntVal i) return i.value();
+        throw new RuntimeError("Expected int, got " + v.typeName(), line);
+    }
+
+    //handles numeric coercion: accepts int or float, returns its value as a double
+    private double asDouble(Value v, int line) {
+        if (v instanceof Value.FloatVal f) return f.value();
+        if (v instanceof Value.IntVal i)   return (double) i.value();
         throw new RuntimeError("Expected number, got " + v.typeName(), line);
     }
 
@@ -251,19 +301,14 @@ public final class Interpreter {
         if (a instanceof Value.BoolVal ab && b instanceof Value.BoolVal bb) {
             return ab.value() == bb.value();
         }
+        //handles cross-type numeric equality (int vs float) by comparing as doubles
+        if ((a instanceof Value.IntVal || a instanceof Value.FloatVal)
+                && (b instanceof Value.IntVal || b instanceof Value.FloatVal)) {
+            return asDouble(a, line) == asDouble(b, line);
+        }
         throw new RuntimeError(
             "Cannot compare " + a.typeName() + " with " + b.typeName(),
             line);
-    }
-
-    private Value intOp(Value l, Value r, int line, LongBinaryOperator op) {
-        long li = asInt(l, line);
-        long ri = asInt(r, line);
-        try {
-            return new Value.IntVal(op.applyAsLong(li, ri));
-        } catch (ArithmeticException e) {
-            throw new RuntimeError("Arithmetic overflow", line);
-        }
     }
 
     /**

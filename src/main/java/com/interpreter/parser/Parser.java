@@ -282,6 +282,10 @@ public final class Parser {
     private Expr parsePrimary() {
         Token tok = peek();
         if (match(TokenType.NUMBER)) {
+            //handles dispatch between integer and float literal AST nodes based on the lexer's literal type
+            if (tok.literal() instanceof Double d) {
+                return new Expr.FloatLit(d, tok.line());
+            }
             return new Expr.NumberLit((Long) tok.literal(), tok.line());
         }
         if (match(TokenType.TRUE))  return new Expr.BoolLit(true,  tok.line());

@@ -110,14 +110,22 @@ public final class Lexer {
 
     private void number() {
         while (!isAtEnd() && Character.isDigit(peek())) advance();
+        //handles optional fractional part — a '.' is only consumed when followed by a digit
+        boolean isFloat = false;
+        if (peek() == '.' && current + 1 < source.length()
+                && Character.isDigit(source.charAt(current + 1))) {
+            isFloat = true;
+            advance(); // consume '.'
+            while (!isAtEnd() && Character.isDigit(peek())) advance();
+        }
         String text = source.substring(start, current);
-        long value;
+        Object literal;
         try {
-            value = Long.parseLong(text);
+            literal = isFloat ? (Object) Double.parseDouble(text) : (Object) Long.parseLong(text);
         } catch (NumberFormatException e) {
             throw new LexError("Number literal out of range: " + text, line);
         }
-        tokens.add(new Token(TokenType.NUMBER, text, value, line, tokenColumn));
+        tokens.add(new Token(TokenType.NUMBER, text, literal, line, tokenColumn));
     }
 
     private void identifier() {

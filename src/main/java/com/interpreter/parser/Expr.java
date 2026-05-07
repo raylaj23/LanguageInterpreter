@@ -14,6 +14,8 @@ public sealed interface Expr {
     int line();
 
     record NumberLit(long value, int line) implements Expr {}
+    //handles floating-point literal AST nodes
+    record FloatLit(double value, int line) implements Expr {}
     record BoolLit(boolean value, int line) implements Expr {}
     record Variable(String name, int line) implements Expr {}
     record Unary(String op, Expr operand, int line) implements Expr {}
