@@ -1,252 +1,121 @@
 # Language Interpreter
 
-A small interpreter for an artificial programming language, written in Java 21.
-Reads a program from standard input, executes it, and prints the final values
-of all top-level variables to standard output (one per line, in declaration
-order).
+A small interpreter for a custom programming language, written in **Java 21**.
+It reads a program from standard input, executes it, and prints the final values
+of all global variables to standard output, one per line, in
+declaration order.
 
-## Build & run
+## Solution overview
 
-The project ships with a **Gradle wrapper** (`gradlew` / `gradlew.bat`) and
-the Foojay toolchain resolver, so you do **not** need to install Gradle and
-you do **not** need to install Java 21 manually. The first invocation will
-download both automatically (one-time, ~150 MB into your Gradle user home).
+The interpreter is a classic three-stage tree-walking pipeline. Each stage has a
+single responsibility and feeds the next:
 
-You only need:
-
-- Any JDK on the `PATH` (8+ is enough -- Gradle itself runs on it; the
-  project's own JDK 21 will be auto-provisioned by the toolchain resolver).
-- An internet connection on the first run.
-
-> **PowerShell quirk:** PowerShell does not support `<` for stdin
-> redirection. Use `Get-Content` or a here-string instead. Also, run each
-> command on its own line -- don't paste a multi-line block all at once.
-
-### Step by step
-
-#### 1. Run the test suite
-
-PowerShell:
-
-```powershell
-.\gradlew.bat test
+```
+source string
+	Lexer       (com.interpreter.lexer)     characters to tokens
+	Parser      (com.interpreter.parser)    tokens to AST (Stmt / Expr)
+	Interpreter (com.interpreter.runtime)   AST to side effects on globals
+	Main prints the global environment
 ```
 
-cmd.exe:
+### Lexer
+Hand-written single-pass scanner. Walks the source one char at a time, emits
+`Token`s with line/column info. Handles whitespace, `#` line comments, numeric
+literals (int and float), identifiers, keywords (`if`, `then`, `else`, `while`,
+`do`, `fun`, `return`, `true`, `false`), and all punctuation/operators. Lex
+errors (e.g. stray `@`) are reported with line numbers via `LexError`.
 
-```cmd
-gradlew.bat test
+### Parser
+Recursive-descent parser with a method per grammar non-terminal. Operator
+precedence is encoded by the call chain: lower-precedence operators are parsed
+first and recurse into tighter ones for their operands. The output is a
+**sealed-interface AST** (`Expr`, `Stmt`) made of immutable `record` nodes — the
+interpreter switch-statements over them with compile-time exhaustiveness
+checking. Parse errors carry line numbers and the offending token.
+
+### Interpreter
+Tree-walking evaluator. Two scopes via `Environment`: a global scope and a
+per-call local scope for functions. `return` unwinds a call via an internal
+`ReturnSignal` exception (cheaper than threading a return flag through every
+recursive eval). Recursion is capped at `MAX_CALL_DEPTH = 1000` so infinite
+recursion surfaces as a clean runtime error instead of a `StackOverflowError`.
+
+### Project layout
+```
+src/main/java/com/interpreter/
+	Main.java          entry point: stdin to run to stdout
+	lexer/             Token, TokenType, Lexer
+	parser/            Expr, Stmt, Parser
+	runtime/           Value, Environment, Interpreter
+	error/             InterpreterException + LexError / ParseError / RuntimeError
+src/test/java/com/interpreter/
+	EndToEndTest.java  JUnit 5 tests of the full pipeline
 ```
 
-bash / WSL / macOS / Git Bash:
+## Supported features (the basic samples)
+
+The six required sample programs all run end-to-end:
+
+1. arithmetic with parens — `x = 2; y = (x + 2) * 2`
+2. `if x > 10 then y = 100 else y = 0`
+3. `while ... do` with a comma-separated compound body
+4. function definition + call — `fun add(a, b) { return a + b }`
+5. recursive factorial
+6. iterative factorial (while + if + return inside a function)
+
+The base language supports:
+
+- variable assignment and reads
+- `if / then / else`
+- `while / do`
+- `fun NAME(params) { ... }` with `return`
+- arithmetic `+ - * /`
+- comparisons `== != < > <= >=`
+- parenthesized expressions
+- `#` line comments
+
+## What I added (beyond the samples)
+
+These were added on top of the spec. Each one is implemented at the layer where
+it naturally fits, with no impact on the core grammar.
+
+| Feature | Where it's implemented | How |
+|---|---|---|
+| **Float literals** (`3.14`) | Lexer + AST + Interpreter | Lexer recognises `.` in numeric literals and tags the token's literal as `Double`; parser produces `Expr.FloatLit`; interpreter has a separate `Value.FloatVal` runtime type. |
+| **Numeric promotion** (mixed int/float) | `evalBinary` in Interpreter | If either operand is float, the whole op promotes to float (`Math.pow` for `**`, IEEE arithmetic for `+ - * / %`). |
+| **Modulo `%`** | Parser (`parseMultiplication`) + Interpreter | Same precedence as `* /`; integer modulo is bounds-checked (modulo by zero → runtime error). |
+| **Exponentiation `**`** (right-associative) | Parser (`parsePower`) + Interpreter | Right-associative by recursing through `parseUnary` on the exponent. Integer power uses overflow-checked exponentiation-by-squaring; negative integer exponent → runtime error. |
+| **Compound assignments** `+= -= *= /= %= **=` | `parseAssignOrExpr` | Desugared at parse time: `x += e` becomes the AST for `x = x + e`. No runtime support needed. |
+| **Postfix `++` / `--`** | `parseAssignOrExpr` | Desugared the same way: `x++` → `x = x + 1`. |
+| **Logical `&& \|\| !`** with short-circuit | Parser + Interpreter | A dedicated `Expr.Logical` AST node (separate from `Expr.Binary`) so the interpreter only evaluates the right operand when needed. |
+| **Overflow-safe integer arithmetic** | Interpreter | Uses `Math.addExact / subtractExact / multiplyExact / negateExact` so overflow becomes a clean runtime error rather than a silent wrap. |
+| **Recursion-depth cap** | Interpreter | `MAX_CALL_DEPTH = 1000`; infinite recursion (e.g. `fun loop(n) { return loop(n+1) }`) surfaces as a runtime error instead of crashing the JVM. |
+| **`#` line comments** | Lexer | Skipped in the scanner — no token emitted, no parser changes. |
+| **Comma- and newline-separated block bodies** | Parser (`parseBlockBody`) | Inside `{ ... }` either separator works, so functions can be one-liners (`{ a, b, return c }`) or multi-line. |
+| **Strict typing in conditions** | Interpreter (`asBool`) | `if 1 then ...` is a runtime error — no implicit truthiness, so type mistakes are loud. |
+
+## How to run
+
+The project ships with a Gradle wrapper, so use `./gradlew` or `gradlew.bat` (Windows).
+
+## How to test
+
+The test suite (`src/test/java/com/interpreter/EndToEndTest.java`) is a JUnit 5
+end-to-end test that runs source through `Lexer → Parser → Interpreter` and
+asserts on the final globals. It covers:
+
+- all six required sample programs
+- output formatting (declaration order, function names hidden, locals don't leak)
+- every error path (undefined var / function, wrong arity, division by zero,
+  infinite recursion, non-boolean condition, lex/parse errors)
+- misc edge cases (blank input, comments, operator precedence, unary minus)
+
+Run all tests:
 
 ```sh
 ./gradlew test
 ```
 
-Expected: `BUILD SUCCESSFUL` and 18 tests passing.
+## Author
 
-#### 2. Run the interpreter on a file
-
-Save a program (e.g. the contents below) into `program.txt`:
-
-```
-x = 2
-y = (x + 2) * 2
-```
-
-Then:
-
-PowerShell:
-
-```powershell
-Get-Content program.txt | .\gradlew.bat -q run
-```
-
-cmd.exe:
-
-```cmd
-gradlew.bat -q run < program.txt
-```
-
-bash / WSL / macOS / Git Bash:
-
-```sh
-./gradlew -q run < program.txt
-```
-
-Expected output:
-
-```
-x: 2
-y: 8
-```
-
-#### 3. Run the interpreter on an inline program
-
-PowerShell (here-string -- type the lines exactly as shown, including the
-closing `"@`):
-
-```powershell
-@"
-x = 2
-y = (x + 2) * 2
-"@ | .\gradlew.bat -q run
-```
-
-bash / WSL / macOS / Git Bash:
-
-```sh
-printf 'x = 2\ny = (x + 2) * 2\n' | ./gradlew -q run
-```
-
-The `-q` flag silences Gradle's own logging so only the interpreter's
-output is printed.
-
-## Architecture
-
-A classic three-stage pipeline:
-
-```
-source string
-   │
-   ▼ Lexer       (com.interpreter.lexer)        characters → tokens
-   │
-   ▼ Parser      (com.interpreter.parser)       tokens     → AST (Stmt / Expr)
-   │
-   ▼ Interpreter (com.interpreter.runtime)      AST        → side effects
-   │
-   ▼ Main prints the global environment
-```
-
-Each stage has a single responsibility and a sealed AST is used so the
-interpreter can switch over node types exhaustively.
-
-```
-src/main/java/com/interpreter/
-├── Main.java              # entry point: stdin → run → stdout
-├── lexer/                 # Token, TokenType, Lexer
-├── parser/                # Expr, Stmt, Parser (recursive descent)
-├── runtime/               # Value, Environment, Interpreter
-└── error/                 # InterpreterException + LexError / ParseError / RuntimeError
-```
-
-## Language summary
-
-Two value types: 64-bit signed integers and booleans (`true` / `false`).
-
-```
-program     := stmt (NEWLINE+ stmt)*
-stmt        := assignment | if | while | fun | return | expr
-assignment  := IDENT '=' expr
-if          := 'if' expr 'then' stmt ('else' stmt)?
-while       := 'while' expr 'do' whileBody
-whileBody   := stmt (',' stmt)*                    ; ends at NEWLINE / RBRACE / EOF
-fun         := 'fun' IDENT '(' params? ')' '{' blockBody '}'
-blockBody   := stmt ((',' | NEWLINE)+ stmt)*       ; comma OR newline separates
-return      := 'return' expr
-
-expr        := comparison
-comparison  := addition (('==' | '!=' | '<' | '>' | '<=' | '>=') addition)*
-addition    := multiplication (('+' | '-') multiplication)*
-multiplication := unary (('*' | '/') unary)*
-unary       := '-' unary | primary
-primary     := NUMBER | 'true' | 'false' | IDENT | call | '(' expr ')'
-call        := IDENT '(' (expr (',' expr)*)? ')'
-```
-
-Operator precedence (low → high): comparisons; `+ -`; `* /`; unary `-`; primary.
-
-Line comments start with `#` and run to end of line.
-
-## Ambiguities and how they were resolved
-
-The spec is intentionally informal, so several choices had to be made.
-
-1. **`if`/`else` branches are single statements.** In sample 3,
-
-   ```
-   while x < 3 do if x == 1 then y = 10 else y = y + 1, x = x + 1
-   ```
-
-   produces `x: 3, y: 11`. That output is only possible if `x = x + 1`
-   runs every iteration -- including the iteration where `x == 1` and the
-   `else` branch does *not* execute. So the comma after `y = y + 1` must
-   terminate the `if`, making `x = x + 1` part of the **while** body, not
-   the `else` branch.
-
-2. **`while` body is a comma-separated compound, terminated by newline (or `}`).**
-   Same example: the body is `[if-stmt, x = x + 1]`. The body greedily
-   consumes everything up to the end of the logical line.
-
-3. **Inside `{ ... }`, both commas and newlines separate statements.** The
-   sample functions are written on one line with commas, but multi-line
-   function bodies are also accepted.
-
-4. **Functions are top-level only and live in their own namespace.** They
-   are not first-class values (no anonymous functions, no passing functions
-   as arguments). Function names therefore do not appear in the printed
-   globals.
-
-5. **Function bodies create locals, but can read globals.** Assignment in a
-   function body always writes to the local frame (Python-style "local by
-   default"). Reads walk up to globals, which is what makes recursion work
-   (`fact_rec` is visible inside its own body because it lives in the global
-   function table).
-
-6. **Conditions must be booleans.** There is no implicit truthiness --
-   `if 1 then ...` is a runtime type error. This makes mistakes loud rather
-   than silent.
-
-7. **Integers are 64-bit and overflow is reported, not wrapped.** Arithmetic
-   uses `Math.addExact` / `Math.multiplyExact` etc., so overflow surfaces as
-   a clean runtime error.
-
-## Edge cases handled
-
-| Situation                          | Behaviour                                                    |
-|------------------------------------|--------------------------------------------------------------|
-| Division by zero                   | Runtime error: "Division by zero" with line number           |
-| Undefined variable                 | Runtime error naming the variable                            |
-| Undefined function                 | Runtime error naming the function                            |
-| Wrong number of arguments          | Runtime error: expected vs. actual count                     |
-| Infinite recursion                 | Capped at 1000 frames; surfaces as a clean runtime error     |
-| Non-boolean in `if` / `while`      | Runtime type error                                           |
-| Comparing values of different types| Runtime type error                                           |
-| Arithmetic overflow                | Runtime error (no silent wrap)                               |
-| Function returning without `return`| Runtime error                                                |
-| Empty / whitespace-only program    | No output, exit 0                                            |
-| Parse error                        | Reported with line number; non-zero exit                     |
-| Lex error (e.g. stray `@`)         | Reported with line number; non-zero exit                     |
-
-All errors are written to **stderr**. Successful program output goes to
-**stdout**. The process exits with status `1` on any error.
-
-## Tests
-
-`src/test/java/com/interpreter/EndToEndTest.java` covers:
-
-- All six sample programs from the spec.
-- Output formatting: declaration order, function names hidden, function
-  locals hidden.
-- Each error path listed in the table above.
-- Misc.: line comments, operator precedence, unary minus, blank input.
-
-Run with `gradle test`.
-
-## What I would add next
-
-These were intentionally kept out of scope:
-
-- A `print(x)` builtin (so programs can produce output other than the final
-  globals).
-- Strings, arrays, first-class functions, closures.
-- Block statements (`{ ... }`) usable outside function definitions, so `if`
-  and `while` could take multi-statement branches without relying on the
-  comma trick.
-- Better error recovery in the parser (currently it stops at the first
-  error -- fine for a small language, but a real IDE would want
-  resynchronisation).
-- Source positions on more AST nodes to make runtime error messages even
-  more precise (currently they point at the start of the offending
-  construct, which is usually enough but not always).
+[raylaj23] — Computer Engineering Student.
