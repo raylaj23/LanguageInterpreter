@@ -17,6 +17,7 @@ import java.util.List;
  *   program     := stmt (NEWLINE+ stmt)*
  *   stmt        := assignment | if | while | fun | return | expr
  *   assignment  := IDENT ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '**=') expr
+ *               |  IDENT ('++' | '--')
  *   if          := 'if' expr 'then' stmt ('else' stmt)?
  *   while       := 'while' expr 'do' whileBody
  *   whileBody   := stmt (',' stmt)*                          ; terminated by NEWLINE / RBRACE / EOF
@@ -128,6 +129,16 @@ public final class Parser {
     }
 
     private Stmt parseAssignOrExpr() {
+        //handles postfix '++' / '--' as a statement: x++ desugars to x = x + 1
+        if (check(TokenType.IDENT) && checkNextAny(TokenType.PLUSPLUS, TokenType.MINUSMINUS)) {
+            Token name = consume(TokenType.IDENT, "Expected identifier");
+            Token op = advance();
+            String binOp = (op.type() == TokenType.PLUSPLUS) ? "+" : "-";
+            Expr lhs = new Expr.Variable(name.lexeme(), name.line());
+            Expr one = new Expr.NumberLit(1L, op.line());
+            Expr value = new Expr.Binary(lhs, binOp, one, op.line());
+            return new Stmt.Assign(name.lexeme(), value, name.line());
+        }
         if (check(TokenType.IDENT) && checkNextAny(
                 TokenType.ASSIGN,
                 TokenType.PLUS_ASSIGN, TokenType.MINUS_ASSIGN,

@@ -14,6 +14,8 @@ public enum TokenType {
     ASSIGN,
     //handles compound assignment tokens
     PLUS_ASSIGN, MINUS_ASSIGN, STAR_ASSIGN, SLASH_ASSIGN, PERCENT_ASSIGN, STARSTAR_ASSIGN,
+    //handles increment and decrement tokens
+    PLUSPLUS, MINUSMINUS,
 
     // Punctuation
     LPAREN, RPAREN, LBRACE, RBRACE, COMMA,

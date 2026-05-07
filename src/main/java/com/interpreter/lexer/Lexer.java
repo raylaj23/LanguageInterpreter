@@ -53,8 +53,16 @@ public final class Lexer {
                 line++;
                 column = 1;
             }
-            case '+' -> addToken(match('=') ? TokenType.PLUS_ASSIGN : TokenType.PLUS);
-            case '-' -> addToken(match('=') ? TokenType.MINUS_ASSIGN : TokenType.MINUS);
+            case '+' -> {
+                if (match('+'))      addToken(TokenType.PLUSPLUS);
+                else if (match('=')) addToken(TokenType.PLUS_ASSIGN);
+                else                 addToken(TokenType.PLUS);
+            }
+            case '-' -> {
+                if (match('-'))      addToken(TokenType.MINUSMINUS);
+                else if (match('=')) addToken(TokenType.MINUS_ASSIGN);
+                else                 addToken(TokenType.MINUS);
+            }
             case '*' -> {
                 if (match('*')) {
                     addToken(match('=') ? TokenType.STARSTAR_ASSIGN : TokenType.STARSTAR);
